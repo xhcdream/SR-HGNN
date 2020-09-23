@@ -18,7 +18,7 @@ python dataProcess.py --dataset [CiaoDVD,Epinions,Douban] --rate [0.8,0.6]
 train SR-HGNN model:
 
 ```
-python main.py --dataset CiaoDVD --rate 0.8 --batch 2048 --layer [16,16] --ufeat_dim 500 --r 0.001 --r2 0.2 --r3 0.01 --dgi_hide_dim 500 --dgi_lr 0.001 
+python main.py --dataset CiaoDVD --rate 0.8 --batch 2048 --layer [16,16] --r 0.001 --r2 0.2 --r3 0.01 --dgi_hide_dim 500 --dgi_lr 0.001 
 ```
 
 
