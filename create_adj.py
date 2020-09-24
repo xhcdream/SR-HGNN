@@ -21,7 +21,7 @@ def creatMultiItemUserAdj(dataset, rate):
         mult_adj[iid*ratingClass+r-1, uid] = 1
 
     DIR = os.path.join(os.getcwd(), "data", dataset, 'mats')
-    path = DIR + '/{0}_multi_item_adj.csv'.format(rate)
+    path = DIR + '/{0}_multi_item_adj.pkl'.format(rate)
     with open(path, 'wb') as fs:
         pickle.dump(mult_adj.tocsr(), fs)
     print("create multi_item_feat")

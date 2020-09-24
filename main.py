@@ -34,7 +34,7 @@ class Model():
         assert a.nnz == (trainMat.nnz + testMat.nnz + cvMat.nnz)
 
         adj_DIR = os.path.join(os.getcwd(), "data", dataset, 'mats')
-        adj_path = adj_DIR + '/{0}_multi_item_adj.csv'.format(args.rate)
+        adj_path = adj_DIR + '/{0}_multi_item_adj.pkl'.format(args.rate)
 
         with open(adj_path, 'rb') as fs:
             multi_adj = pickle.load(fs)

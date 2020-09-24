@@ -19,7 +19,7 @@ rate = args.rate
 DIR = os.path.join(os.getcwd(), "data", dataset)
 
 
-with open(DIR + "/ratings.csv", 'rb') as fs:
+with open(DIR + "/ratings.pkl", 'rb') as fs:
     data = pickle.load(fs)
 
 row, col = data.shape
@@ -51,21 +51,21 @@ print("train num = %d"%(train.nnz))
 print("test num = %d"%(test.nnz))
 print("cv num = %d"%(cv.nnz))
 
-with open(DIR + "/mats/{0}_train.csv".format(rate), 'wb') as fs:
+with open(DIR + "/mats/{0}_train.pkl".format(rate), 'wb') as fs:
     pickle.dump(train.tocsr(), fs)
-with open(DIR + "/mats/{0}_test.csv".format(rate), 'wb') as fs:
+with open(DIR + "/mats/{0}_test.pkl".format(rate), 'wb') as fs:
     pickle.dump(test.tocsr(), fs)
-with open(DIR + "/mats/{0}_cv.csv".format(rate), 'wb') as fs:
+with open(DIR + "/mats/{0}_cv.pkl".format(rate), 'wb') as fs:
     pickle.dump(cv.tocsr(), fs)
 
 #filter
-with open(DIR + "/mats/{0}_train.csv".format(rate), 'rb') as fs:
+with open(DIR + "/mats/{0}_train.pkl".format(rate), 'rb') as fs:
     train = pickle.load(fs)
-with open(DIR + "/mats/{0}_test.csv".format(rate), 'rb') as fs:
+with open(DIR + "/mats/{0}_test.pkl".format(rate), 'rb') as fs:
     test = pickle.load(fs)
-with open(DIR + "/mats/{0}_cv.csv".format(rate), 'rb') as fs:
+with open(DIR + "/mats/{0}_cv.pkl".format(rate), 'rb') as fs:
     cv = pickle.load(fs)
-with open(DIR + "/trust.csv", 'rb') as fs:
+with open(DIR + "/trust.pkl", 'rb') as fs:
     trust = pickle.load(fs)
 
 a = np.sum(np.sum(train != 0, axis=1) ==0)
@@ -94,13 +94,13 @@ while a != 0 or b != 0 or c != 0:
     c = np.sum(np.sum(trust, axis=1) == 0)
 
 
-with open(DIR + "/mats/{0}_train.csv".format(rate), 'wb') as fs:
+with open(DIR + "/mats/{0}_train.pkl".format(rate), 'wb') as fs:
     pickle.dump(train, fs)
-with open(DIR + "/mats/{0}_test.csv".format(rate), 'wb') as fs:
+with open(DIR + "/mats/{0}_test.pkl".format(rate), 'wb') as fs:
     pickle.dump(test, fs)
-with open(DIR + "/mats/{0}_cv.csv".format(rate), 'wb') as fs:
+with open(DIR + "/mats/{0}_cv.pkl".format(rate), 'wb') as fs:
     pickle.dump(cv, fs)
-with open(DIR + "/mats/{0}_trust.csv".format(rate), 'wb') as fs:
+with open(DIR + "/mats/{0}_trust.pkl".format(rate), 'wb') as fs:
     pickle.dump(trust, fs)
 
 creatMultiItemUserAdj(args.dataset, args.rate)
