@@ -6,7 +6,7 @@ import os
 import argparse
 from create_adj import creatMultiItemUserAdj
 
-#python splitTrainTestCv --dataset CiaoDVD --rate 0.8
+#python splitTrainTestvalid --dataset CiaoDVD --rate 0.8
 parser = argparse.ArgumentParser()
 #dataset params
 parser.add_argument('--dataset', type=str, default="Epinions", help="CiaoDVD,Epinions,Douban")
@@ -35,36 +35,36 @@ size_test = int(uid_list.size * (1-rate)/2)
 
 train_idx = l[0: size_train]
 test_idx = l[size_train: size_train + size_test]
-cv_idx = l[size_train + size_test:]
+valid_idx = l[size_train + size_test:]
 sp.coo_matrix
 
 train = sp.csc_matrix((rating_list[train_idx], (uid_list[train_idx], iid_list[train_idx])), shape=data.shape)
 
 test = sp.csc_matrix((rating_list[test_idx], (uid_list[test_idx], iid_list[test_idx])), shape=data.shape)
 
-cv = sp.csc_matrix((rating_list[cv_idx], (uid_list[cv_idx], iid_list[cv_idx])), shape=data.shape)
+valid = sp.csc_matrix((rating_list[valid_idx], (uid_list[valid_idx], iid_list[valid_idx])), shape=data.shape)
 
-assert data.nnz == (train + test + cv).nnz
+assert data.nnz == (train + test + valid).nnz
 
 
 print("train num = %d"%(train.nnz))
 print("test num = %d"%(test.nnz))
-print("cv num = %d"%(cv.nnz))
+print("valid num = %d"%(valid.nnz))
 
 with open(DIR + "/mats/{0}_train.pkl".format(rate), 'wb') as fs:
     pickle.dump(train.tocsr(), fs)
 with open(DIR + "/mats/{0}_test.pkl".format(rate), 'wb') as fs:
     pickle.dump(test.tocsr(), fs)
-with open(DIR + "/mats/{0}_cv.pkl".format(rate), 'wb') as fs:
-    pickle.dump(cv.tocsr(), fs)
+with open(DIR + "/mats/{0}_valid.pkl".format(rate), 'wb') as fs:
+    pickle.dump(valid.tocsr(), fs)
 
 #filter
 with open(DIR + "/mats/{0}_train.pkl".format(rate), 'rb') as fs:
     train = pickle.load(fs)
 with open(DIR + "/mats/{0}_test.pkl".format(rate), 'rb') as fs:
     test = pickle.load(fs)
-with open(DIR + "/mats/{0}_cv.pkl".format(rate), 'rb') as fs:
-    cv = pickle.load(fs)
+with open(DIR + "/mats/{0}_valid.pkl".format(rate), 'rb') as fs:
+    valid = pickle.load(fs)
 with open(DIR + "/trust.pkl", 'rb') as fs:
     trust = pickle.load(fs)
 
@@ -76,18 +76,18 @@ while a != 0 or b != 0 or c != 0:
         idx, _ = np.where(np.sum(train != 0, axis=1) != 0)
         train = train[idx]
         test = test[idx]
-        cv = cv[idx]
+        valid = valid[idx]
         trust = trust[idx][:, idx]
     elif b != 0:
         _, idx = np.where(np.sum(train != 0, axis=0) != 0)
         train = train[:, idx]
         test = test[:, idx]
-        cv = cv[:, idx]
+        valid = valid[:, idx]
     elif c != 0:
         idx, _ = np.where(np.sum(trust, axis=1) != 0)
         train = train[idx]
         test = test[idx]
-        cv = cv[idx]
+        valid = valid[idx]
         trust = trust[idx][:, idx]
     a = np.sum(np.sum(train != 0, axis=1) ==0)
     b = np.sum(np.sum(train != 0, axis=0) ==0)
@@ -98,8 +98,8 @@ with open(DIR + "/mats/{0}_train.pkl".format(rate), 'wb') as fs:
     pickle.dump(train, fs)
 with open(DIR + "/mats/{0}_test.pkl".format(rate), 'wb') as fs:
     pickle.dump(test, fs)
-with open(DIR + "/mats/{0}_cv.pkl".format(rate), 'wb') as fs:
-    pickle.dump(cv, fs)
+with open(DIR + "/mats/{0}_valid.pkl".format(rate), 'wb') as fs:
+    pickle.dump(valid, fs)
 with open(DIR + "/mats/{0}_trust.pkl".format(rate), 'wb') as fs:
     pickle.dump(trust, fs)
 

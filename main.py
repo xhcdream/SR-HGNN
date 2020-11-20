@@ -18,7 +18,6 @@ from ToolScripts.utils import sparse_mx_to_torch_sparse_tensor
 from ToolScripts.utils import normalize_adj
 from ToolScripts.utils import loadData
 from ToolScripts.utils import generate_sp_ont_hot
-from ToolScripts.utils import DGI_MODEL_DICT
 from ToolScripts.utils import mkdir
 from DGI.dgi import DGI
 from dgl import DGLGraph
@@ -29,9 +28,9 @@ modelUTCStr = str(int(time.time()))[4:]
 
 class Model():
     def getData(self, args):
-        trainMat, testMat, cvMat, trustMat = loadData(args.dataset, args.rate)
-        a = trainMat + testMat + cvMat
-        assert a.nnz == (trainMat.nnz + testMat.nnz + cvMat.nnz)
+        trainMat, testMat, validMat, trustMat = loadData(args.dataset, args.rate)
+        a = trainMat + testMat + validMat
+        assert a.nnz == (trainMat.nnz + testMat.nnz + validMat.nnz)
 
         adj_DIR = os.path.join(os.getcwd(), "data", dataset, 'mats')
         adj_path = adj_DIR + '/{0}_multi_item_adj.pkl'.format(args.rate)
@@ -39,7 +38,7 @@ class Model():
         with open(adj_path, 'rb') as fs:
             multi_adj = pickle.load(fs)
         
-        return trainMat, testMat, cvMat, trustMat, multi_adj
+        return trainMat, testMat, validMat, trustMat, multi_adj
     
     def preTrainDGI(self, train, trust):
         tmpMat = (trust + trust.T)
@@ -92,7 +91,7 @@ class Model():
 
     def __init__(self, args):
         self.args = args
-        train, test, cv, trust, multi_adj = self.getData(self.args)
+        train, test, valid, trust, multi_adj = self.getData(self.args)
         #pre train dgi model
         self.dgi_path = self.preTrainDGI(train, trust)
 
@@ -113,22 +112,22 @@ class Model():
         b = csr_matrix((multi_adj.shape[0], multi_adj.shape[0]))
         multi_uv_adj = sp.vstack([sp.hstack([a, multi_adj.T]), sp.hstack([multi_adj,b])])
 
-        #train test cv data
+        #train test valid data
         train_coo = train.tocoo()
         test_coo = test.tocoo()
-        cv_coo = cv.tocoo()
+        valid_coo = valid.tocoo()
 
         self.train_u, self.train_v, self.train_r = train_coo.row, train_coo.col, train_coo.data
         self.test_u, self.test_v, self.test_r = test_coo.row, test_coo.col, test_coo.data
-        self.cv_u, self.cv_v, self.cv_r = cv_coo.row, cv_coo.col, cv_coo.data
+        self.valid_u, self.valid_v, self.valid_r = valid_coo.row, valid_coo.col, valid_coo.data
 
         assert np.sum(self.train_r == 0) == 0
         assert np.sum(self.test_r == 0) == 0
-        assert np.sum(self.cv_r == 0) == 0
+        assert np.sum(self.valid_r == 0) == 0
 
         self.trainMat = train
         self.testMat  = test
-        self.cvMat = cv
+        self.validMat = valid
         self.trustMat = trust
 
         #normalize 
@@ -220,7 +219,7 @@ class Model():
     def run(self):
         #判断是导入模型还是重新训练模型
         self.prepareModel()
-        cvWait = 0
+        validWait = 0
         best_rmse = 9999.0
         best_mae = 9999.0
         rewait_r = 0
@@ -246,14 +245,13 @@ class Model():
                     log("rewait{0}".format(rewait_r))
                 
                 if rewait_r == self.args.rewait:
-                    self.args.ng_num = 0
                     self.args.lam_r = 0
                     log("stop uv reconstruction")
             
             epoch_reconstruct_loss_t = 0
-            if self.args.lam_t != 0 and self.args.ng_num2 != 0:
+            if self.args.lam_t != 0:
                 epoch_reconstruct_loss_t = self.trainSocial(self.trustMat)
-                log("epoch %d/%d, epoch_loss=%.2f"% (e,self.args.epochs, epoch_reconstruct_loss_t))
+                log("epoch %d/%d, epoch_reconstruct_social_loss=%.2f"% (e,self.args.epochs, epoch_reconstruct_loss_t))
                 if epoch_reconstruct_loss_t < best_reconstruct_loss_t:
                     best_reconstruct_loss_t = epoch_reconstruct_loss_t
                     rewait_t = 0
@@ -262,7 +260,6 @@ class Model():
                     log("rewait_t{0}".format(rewait_t))
                 
                 if rewait_t == self.args.rewait:
-                    self.args.ng_num2 = 0
                     self.args.lam_t = 0
                     log("stop uu reconstruction")
             
@@ -272,43 +269,58 @@ class Model():
             self.train_losses.append(epoch_loss)
             self.train_RMSEs.append(epoch_rmse)
             self.train_MAEs.append(epoch_mae)
-            cv_epoch_loss, cv_epoch_rmse, cv_epoch_mae = self.testModel(self.cvMat, (self.cv_u, self.cv_v, self.cv_r))
-            log("epoch %d/%d, cv_epoch_loss=%.2f, cv_epoch_rmse=%.4f, cv_epoch_mae=%.4f"%(e, self.args.epochs, cv_epoch_loss, cv_epoch_rmse, cv_epoch_mae))
+            valid_epoch_loss, valid_epoch_rmse, valid_epoch_mae = self.testModel(self.validMat, (self.valid_u, self.valid_v, self.valid_r))
+            log("epoch %d/%d, valid_epoch_loss=%.2f, valid_epoch_rmse=%.4f, valid_epoch_mae=%.4f"%(e, self.args.epochs, valid_epoch_loss, valid_epoch_rmse, valid_epoch_mae))
             #验证
-            self.test_losses.append(cv_epoch_loss)
-            self.test_RMSEs.append(cv_epoch_rmse)
-            self.test_MAEs.append(cv_epoch_mae)
+            self.test_losses.append(valid_epoch_loss)
+            self.test_RMSEs.append(valid_epoch_rmse)
+            self.test_MAEs.append(valid_epoch_mae)
             #测试
             all_epoch_loss, all_epoch_rmse, all_epoch_mae = self.testModel(self.testMat, (self.test_u, self.test_v, self.test_r))
             log("epoch %d/%d, all_epoch_loss=%.2f, all_epoch_rmse=%.4f, all_epoch_mae=%.4f"%(e, self.args.epochs, all_epoch_loss, all_epoch_rmse, all_epoch_mae))
             self.step_rmse.append(all_epoch_rmse)
             self.step_mae.append(all_epoch_mae)
 
-            if best_rmse > cv_epoch_rmse:
-                best_rmse = cv_epoch_rmse
-                best_mae = cv_epoch_mae
-                cvWait = 0
+            if best_rmse > valid_epoch_rmse:
+                best_rmse = valid_epoch_rmse
+                best_mae = valid_epoch_mae
+                validWait = 0
                 best_epoch = self.curEpoch
             else:
-                cvWait += 1
-                log("cvWait = %d"%(cvWait))
+                validWait += 1
+                log("validWait = %d"%(validWait))
 
-            if self.args.early == 1 and cvWait == self.args.patience:
+            if self.args.early == 1 and validWait == self.args.patience:
                 log('Early stopping! best epoch = %d'%(best_epoch))
                 break
 
 
-    def ng_sample(self, train_r, ng_num):
-        ng_r = []
-        # tmp = np.array([1,2,3,4,5])
-        tmp = np.arange(1, self.ratingClass+1)
-        for r in train_r:
-            arr = np.delete(tmp, int(r-1))
-            neg = np.random.choice(arr, ng_num, replace=False)
-            ng_r.append(neg)
-        return np.array(ng_r)
+    # def ng_sample2(self, train_r, ng_num=1):
+    #     ng_r = []
+    #     # tmp = np.array([1,2,3,4,5])
+    #     tmp = np.arange(1, self.ratingClass+1)
+    #     for r in train_r:
+    #         arr = np.delete(tmp, int(r-1))
+    #         neg = np.random.choice(arr, ng_num, replace=False)
+    #         ng_r.append(neg)
+    #     return np.array(ng_r)
 
-    def ng_social_sample(self, uid, tid, trust, ng_num):
+    def ng_sample(self, train_r, ng_num=1):
+        ng_r = []
+        num = train_r.size
+        tmp = train_r.astype(np.int)
+        res = np.random.randint(1, self.ratingClass+1, num)
+
+        rebuild_idx = np.where(tmp == res)[0]
+        for idx in rebuild_idx:
+            val = np.random.randint(1, self.ratingClass+1)
+            while val == tmp[idx]:
+                val = np.random.randint(1, self.ratingClass+1)
+            res[idx] = val
+        assert np.sum(res == tmp) == 0
+        return res
+
+    def ng_social_sample2(self, uid, tid, trust, ng_num=1):
         tmp = trust.todok()
         ret_ng_sample = []
         for i in uid:
@@ -321,11 +333,28 @@ class Model():
             ret_ng_sample.append(l)
         return np.array(ret_ng_sample)
 
+    def ng_social_sample(self, uid, tid, trust):
+        tmpTrustMat = trust.todok()
+        num = uid.size
+        userNum = trust.shape[0]
+        neg = np.random.randint(low=0, high=userNum, size=num)
+        for i in range(num):
+            user_id = uid[i]
+            item_id = neg[i]
+            if (user_id, item_id) in tmpTrustMat:
+                while (user_id, item_id) in tmpTrustMat:
+                    item_id = np.random.randint(low=0, high=userNum)
+                neg[i] = item_id
+            else:
+                continue
+        return neg
+
 
     def trainSocial(self, trust):
         train_uid = trust.tocoo().row
         train_tid = trust.tocoo().col
-        ng = self.ng_social_sample(train_uid, train_tid, trust,self.args.ng_num2)
+        ng = self.ng_social_sample(train_uid, train_tid, trust)
+        # ng2 = self.ng_social_sample2(train_uid, train_tid, trust)
         batch = self.args.batch
         num = len(train_uid)
         shuffledIds = np.random.permutation(num)
@@ -338,12 +367,8 @@ class Model():
             batch_nodes_v = train_tid[batch_ids]
             user_embed, _ = self.embed_layer(self.user_dgi_feat, self.user_feat_sp_tensor, self.item_feat_sp_tensor, self.adj_sp_tensor)
             reconstruct_pos = self.w_t(t.cat((user_embed[batch_nodes_u], user_embed[batch_nodes_v]), dim=1))
-            for j in range(self.args.ng_num2):
-                reconstruct_neg = self.w_t(t.cat((user_embed[batch_nodes_u], user_embed[ng[batch_ids, j]]), dim=1))
-                if j == 0 :
-                    reconstruct_loss = (- (reconstruct_pos.view(-1) - reconstruct_neg.view(-1)).sigmoid().log().sum())
-                else:
-                    reconstruct_loss += (- (reconstruct_pos.view(-1) - reconstruct_neg.view(-1)).sigmoid().log().sum())
+            reconstruct_neg = self.w_t(t.cat((user_embed[batch_nodes_u], user_embed[ng[batch_ids]]), dim=1))
+            reconstruct_loss = (- (reconstruct_pos.view(-1) - reconstruct_neg.view(-1)).sigmoid().log().sum())
 
             loss = reconstruct_loss * self.args.lam_t / batch
             self.opt.zero_grad()
@@ -357,8 +382,9 @@ class Model():
     
     def trainModel(self, data):
         train_u, train_v, train_r = data
-        if self.args.lam_r != 0 and self.args.ng_num != 0:
-            ng_r = self.ng_sample(train_r, self.args.ng_num)
+        train_r = train_r.astype(np.int)
+        if self.args.lam_r != 0:
+            ng_r = self.ng_sample(train_r)
         batch = self.args.batch
         num = len(train_u)
         assert self.trainMat.nnz == num
@@ -377,17 +403,13 @@ class Model():
 
             user_embed, item_muliti_embed = self.embed_layer(self.user_dgi_feat, self.user_feat_sp_tensor, self.item_feat_sp_tensor, self.adj_sp_tensor)
             item_muliti_embed = item_muliti_embed.view(-1, self.ratingClass, self.out_dim)
-
+            #mean or attention
             item_embed = t.div(t.sum(item_muliti_embed, dim=1), self.ratingClass)
 
-            if self.args.lam_r != 0 and self.args.ng_num != 0:
+            if self.args.lam_r != 0:
                 reconstruct_pos = self.w_r(t.cat((user_embed[train_u[batch_ids]], item_muliti_embed[train_v[batch_ids], train_r[batch_ids]-1]), dim=1))
-                for j in range(self.args.ng_num):
-                    reconstruct_neg = self.w_r(t.cat((user_embed[train_u[batch_ids]], item_muliti_embed[train_v[batch_ids], ng_r[batch_ids, j]-1]), dim=1))
-                    if j == 0:
-                        reconstruct_loss = (- (reconstruct_pos.view(-1) - reconstruct_neg.view(-1)).sigmoid().log().sum())
-                    else:
-                        reconstruct_loss += (- (reconstruct_pos.view(-1) - reconstruct_neg.view(-1)).sigmoid().log().sum())
+                reconstruct_neg = self.w_r(t.cat((user_embed[train_u[batch_ids]], item_muliti_embed[train_v[batch_ids], ng_r[batch_ids]-1]), dim=1))
+                reconstruct_loss = (- (reconstruct_pos.view(-1) - reconstruct_neg.view(-1)).sigmoid().log().sum())
                 epoch_reconstruct_loss += reconstruct_loss.item()
             userEmbed = user_embed[batch_nodes_u]
             itemEmbed = item_embed[batch_nodes_v]
@@ -471,9 +493,7 @@ class Model():
         "_gcn_r_" + str(self.args.r2)+ \
         "_pred_r_" + str(self.args.r3)+ \
         "_batch_" + str(self.args.batch) + \
-        "_ngnum_" + str(self.args.ng_num) +\
         "_lamr_" + str(self.args.lam_r) +\
-        "_ngnum2_" + str(self.args.ng_num2) +\
         "_lamt_" + str(self.args.lam_t) +\
         "_lr_" + str(self.args.lr) + \
         "_decay_" + str(self.args.decay) + \
@@ -503,9 +523,7 @@ if __name__ == '__main__':
     parser.add_argument('--rewait', type=int, default=5)
     
     #reconstruction params
-    parser.add_argument('--ng_num', type=int, default=0)
     parser.add_argument('--lam_r', type=float, default=0)
-    parser.add_argument('--ng_num2', type=int, default=0)
     parser.add_argument('--lam_t', type=float, default=0)
 
     parser.add_argument('--layer', type=str, default="[16,16]")
@@ -517,15 +535,6 @@ if __name__ == '__main__':
     parser.add_argument('--dgi_reg', type=float, default=0)
     
     args = parser.parse_args()
-    if args.ng_num == 0:
-        args.lam_r = 0
-    if args.lam_r == 0:
-        args.ng_num = 0
-
-    if args.lam_t == 0:
-        args.ng_num2 = 0
-    if args.ng_num2 == 0:
-        args.lam_t = 0
     print(args)
     dataset = args.dataset
     mkdir(dataset)
