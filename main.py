@@ -119,8 +119,7 @@ class Model():
 
 
         #pre train social
-        # self.dgi_path = self.preTrain(trust)
-        self.dgi_path = 'D:\\Work\\SR-HGNN\\Model\\CiaoDVD\\dgi_933813_CiaoDVD_0.8_500_0.pth'
+        self.dgi_path = self.preTrain(trust)
 
         self.userNum, self.itemNum = train.shape
         self.ratingClass = np.unique(train.data).size
