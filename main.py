@@ -40,7 +40,7 @@ class Model():
         
         return trainMat, testMat, validMat, trustMat, multi_adj
     
-    def preTrainDGI(self, train, trust):
+    def preTrain(self, train, trust):
         tmpMat = (trust + trust.T)
         userNum, itemNum = train.shape
         adj = (tmpMat != 0)*1
@@ -93,7 +93,7 @@ class Model():
         self.args = args
         train, test, valid, trust, multi_adj = self.getData(self.args)
         #pre train dgi model
-        self.dgi_path = self.preTrainDGI(train, trust)
+        self.dgi_path = self.preTrain(train, trust)
 
 
         self.userNum, self.itemNum = train.shape
@@ -263,8 +263,8 @@ class Model():
                     self.args.lam_t = 0
                     log("stop uu reconstruction")
             
-            optList = [self.opt]
-            self.curLr = self.adjust_learning_rate(optList, e+1)
+            self.opt
+            self.curLr = self.adjust_learning_rate(self.opt, e+1)
 
             self.train_losses.append(epoch_loss)
             self.train_RMSEs.append(epoch_rmse)
@@ -468,7 +468,6 @@ class Model():
             epoch_rmse_loss += loss.item()
             epoch_mae_loss += t.sum(t.abs(pred.view(-1) - labels_list)).item()
             epoch_rmse_num += batch_nodes_u.size
-            tmp = pred.view(-1).cpu().detach().numpy().tolist()
 
         epoch_rmse = np.sqrt(epoch_rmse_loss / epoch_rmse_num)
         epoch_mae = epoch_mae_loss / epoch_rmse_num
@@ -478,11 +477,9 @@ class Model():
 
     #根据epoch数调整学习率
     def adjust_learning_rate(self, optimizer, epoch):
-        # lr = self.lr * (self.args.decay**epoch)
-        for opt in optimizer:
-            if opt != None:
-                for param_group in opt.param_groups:
-                    param_group['lr'] = param_group['lr'] * self.args.decay
+        if optimizer != None:
+            for param_group in opt.param_groups:
+                param_group['lr'] = param_group['lr'] * self.args.decay
         return 1
 
     def getModelName(self):
