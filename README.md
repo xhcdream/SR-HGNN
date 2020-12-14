@@ -3,9 +3,9 @@ ICDM-2020
 《Global Context Enhanced Social Recommendation with Hierarchical Graph Neural Networks》
 ## Environments
 
-- python 3.7
-- pytorch-1.5
-- DGL 0.4.3 (https://github.com/dmlc/dgl)
+- python 3.8
+- pytorch-1.6
+- DGL 0.5.3 (https://github.com/dmlc/dgl)
 
 ## Example to run the codes		
 
