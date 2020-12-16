@@ -119,7 +119,8 @@ class Model():
 
 
         #pre train social
-        self.dgi_path = self.preTrain(trust)
+        # self.dgi_path = self.preTrain(trust)
+        self.dgi_path = r'D:\Work\SR-HGNN\Model\CiaoDVD\dgi_933813_CiaoDVD_0.8_500_0.pth'
 
         self.userNum, self.itemNum = train.shape
         self.ratingClass = np.unique(train.data).size
@@ -265,12 +266,15 @@ class Model():
             log("**************************************************************")
             #训练
             epoch_reconstruct_loss_r = 0
-
-            epoch_loss, epoch_rmse, epoch_mae, reconstruct_ui_loss, reconstruct_uu_loss  = self.trainModel2()
-
-            # epoch_loss, epoch_rmse, epoch_mae, epoch_reconstruct_loss_r  = self.trainModel((self.train_u, self.train_v, self.train_r))
-            log("epoch %d/%d, epoch_loss=%.2f, reconstruct_ui_loss=%.4f, reconstruct_uu_loss=%.4f, epoch_rmse=%.4f, epoch_mae=%.4f"% \
-                (e,self.args.epochs, epoch_loss, reconstruct_ui_loss, reconstruct_uu_loss, epoch_rmse, epoch_mae))
+            
+            if self.args.train == 2:
+                epoch_loss, epoch_rmse, epoch_mae, reconstruct_ui_loss, reconstruct_uu_loss  = self.trainModel2()
+                log("epoch %d/%d, epoch_loss=%.2f, reconstruct_ui_loss=%.4f, reconstruct_uu_loss=%.4f, epoch_rmse=%.4f, epoch_mae=%.4f"% \
+                    (e,self.args.epochs, epoch_loss, reconstruct_ui_loss, reconstruct_uu_loss, epoch_rmse, epoch_mae))
+            elif self.args.train == 1:
+                epoch_loss, epoch_rmse, epoch_mae, reconstruct_ui_loss  = self.trainModel((self.train_u, self.train_v, self.train_r))
+                log("epoch %d/%d, epoch_loss=%.2f, reconstruct_ui_loss=%.4f, epoch_rmse=%.4f, epoch_mae=%.4f"% \
+                    (e,self.args.epochs, epoch_loss, reconstruct_ui_loss, epoch_rmse, epoch_mae))
             
             if reconstruct_ui_loss > 0:
                 if reconstruct_ui_loss < best_reconstruct_loss_r:
@@ -284,17 +288,17 @@ class Model():
                     self.args.lam_r = 0
                     log("stop uv reconstruction")
 
-            if reconstruct_uu_loss > 0:
-                if reconstruct_uu_loss < best_reconstruct_loss_t:
-                    best_reconstruct_loss_t = reconstruct_uu_loss
-                    rewait_t = 0
-                else:
-                    rewait_t += 1
-                    log("rewait_t={0}".format(rewait_t))
+            # if reconstruct_uu_loss > 0:
+            #     if reconstruct_uu_loss < best_reconstruct_loss_t:
+            #         best_reconstruct_loss_t = reconstruct_uu_loss
+            #         rewait_t = 0
+            #     else:
+            #         rewait_t += 1
+            #         log("rewait_t={0}".format(rewait_t))
                 
-                if rewait_t == self.args.rewait:
-                    self.args.lam_t = 0
-                    log("stop uu reconstruction")
+            #     if rewait_t == self.args.rewait:
+            #         self.args.lam_t = 0
+            #         log("stop uu reconstruction")
             
             self.curLr = self.adjust_learning_rate(self.opt, e+1)
 
@@ -365,9 +369,9 @@ class Model():
                 trust_uid = uu_train[:, 0]
                 trust_tid = uu_train[:, 1]
                 trust_neg_uid = uu_train[:, 2]
-                reconstruct_pos = self.w_t(t.cat((user_embed[trust_uid], user_embed[trust_tid]), dim=1))
-                reconstruct_neg = self.w_t(t.cat((user_embed[trust_uid], user_embed[trust_neg_uid]), dim=1))
-                trust_reconstruct_loss = (- (reconstruct_pos.view(-1) - reconstruct_neg.view(-1)).sigmoid().log().sum())
+                reconstruct_pos_t = self.w_t(t.cat((user_embed[trust_uid], user_embed[trust_tid]), dim=1))
+                reconstruct_neg_t = self.w_t(t.cat((user_embed[trust_uid], user_embed[trust_neg_uid]), dim=1))
+                trust_reconstruct_loss = (- (reconstruct_pos_t.view(-1) - reconstruct_neg_t.view(-1)).sigmoid().log().sum())
                 epoch_reconstruct_uu_loss += trust_reconstruct_loss.item()
 
 
@@ -386,12 +390,10 @@ class Model():
                 loss = loss/labels.shape[0]
 
             if self.args.lam_r != 0:
-                loss = loss + (reconstruct_loss*self.args.lam_r/labels.shape[0])
+                loss = loss + ((reconstruct_loss*self.args.lam_r)/ui_train.shape[0])
             
             if self.args.lam_t != 0:
-                loss = loss + (trust_reconstruct_loss*self.args.lam_t/uu_train.shape[0])
-
-            # loss = loss/labels.shape[0]
+                loss = loss + ((trust_reconstruct_loss*self.args.lam_t)/uu_train.shape[0])
 
             self.opt.zero_grad()
             loss.backward()
@@ -404,7 +406,29 @@ class Model():
         epoch_reconstruct_uu_loss = epoch_reconstruct_uu_loss/stepCount
         return epoch_rmse_loss, epoch_rmse, epoch_mae, epoch_reconstruct_ui_loss, epoch_reconstruct_uu_loss
 
-    
+    def ng_sample(self, train_r, ng_num=1):
+        length = train_r.size
+        neg_data = np.random.randint(low=1, high=self.ratingClass+1, size=length)
+        rebuild_idx = np.where(train_r == neg_data)[0]
+        
+        for idx in rebuild_idx:
+            val = np.random.randint(1, self.ratingClass+1)
+            while val == train_r[idx]:
+                val = np.random.randint(1, self.ratingClass+1)
+            neg_data[idx] = val
+
+        assert np.sum(train_r == neg_data) == 0
+        return neg_data
+
+        ng_r = []
+        # tmp = np.array([1,2,3,4,5])
+        tmp = np.arange(1, self.ratingClass+1)
+        for r in train_r:
+            arr = np.delete(tmp, int(r-1))
+            neg = np.random.choice(arr, ng_num, replace=False)
+            ng_r.append(neg)
+        return np.array(ng_r)
+
     def trainModel(self, data):
         train_u, train_v, train_r = data
         train_r = train_r.astype(np.int)
@@ -504,7 +528,7 @@ class Model():
     def adjust_learning_rate(self, opt, epoch):
         if opt != None:
             for param_group in opt.param_groups:
-                param_group['lr'] = param_group['lr'] * self.args.decay
+                param_group['lr'] = max(param_group['lr'] * self.args.decay, 0.0001)
         return 1
 
     def getModelName(self):
@@ -535,6 +559,7 @@ if __name__ == '__main__':
     parser.add_argument('--r', type=float, default=0.001)
     parser.add_argument('--r2', type=float, default=0.2)
     parser.add_argument('--r3', type=float, default=0.01)
+    parser.add_argument('--train', type=int, default=2)
     parser.add_argument('--batch', type=int, default=128)
     parser.add_argument('--lr', type=float, default=0.001)
     parser.add_argument('--decay', type=float, default=0.98)
