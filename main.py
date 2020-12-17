@@ -119,9 +119,7 @@ class Model():
 
 
         #pre train social
-        # self.dgi_path = self.preTrain(trust)
-        self.dgi_path = r'D:\Work\SR-HGNN\Model\CiaoDVD\dgi_933813_CiaoDVD_0.8_500_0.pth'
-
+        self.dgi_path = self.preTrain(trust)
         self.userNum, self.itemNum = train.shape
         self.ratingClass = np.unique(train.data).size
         log("user num =%d, item num =%d"%(self.userNum, self.itemNum))
@@ -199,12 +197,12 @@ class Model():
                             self.userNum, self.args.dgi_hide_dim, \
                             self.itemNum*self.ratingClass, self.hide_dim, \
                             layer=self.args.layer, alpha=0.1).cuda()
-        
 
         self.predLayer = nn.Sequential(
             nn.Linear(self.out_dim*2, self.out_dim*1),
             nn.ReLU(),
-            nn.Linear(self.out_dim*1, 1)
+            nn.Linear(self.out_dim*1, 1),
+            nn.ReLU()
         ).cuda()
         
         self.w_r = nn.Sequential(
@@ -267,14 +265,9 @@ class Model():
             #训练
             epoch_reconstruct_loss_r = 0
             
-            if self.args.train == 2:
-                epoch_loss, epoch_rmse, epoch_mae, reconstruct_ui_loss, reconstruct_uu_loss  = self.trainModel2()
-                log("epoch %d/%d, epoch_loss=%.2f, reconstruct_ui_loss=%.4f, reconstruct_uu_loss=%.4f, epoch_rmse=%.4f, epoch_mae=%.4f"% \
-                    (e,self.args.epochs, epoch_loss, reconstruct_ui_loss, reconstruct_uu_loss, epoch_rmse, epoch_mae))
-            elif self.args.train == 1:
-                epoch_loss, epoch_rmse, epoch_mae, reconstruct_ui_loss  = self.trainModel((self.train_u, self.train_v, self.train_r))
-                log("epoch %d/%d, epoch_loss=%.2f, reconstruct_ui_loss=%.4f, epoch_rmse=%.4f, epoch_mae=%.4f"% \
-                    (e,self.args.epochs, epoch_loss, reconstruct_ui_loss, epoch_rmse, epoch_mae))
+            epoch_loss, epoch_rmse, epoch_mae, reconstruct_ui_loss, reconstruct_uu_loss  = self.trainModel()
+            log("epoch %d/%d, epoch_loss=%.2f, reconstruct_ui_loss=%.4f, reconstruct_uu_loss=%.4f, epoch_rmse=%.4f, epoch_mae=%.4f"% \
+                (e,self.args.epochs, epoch_loss, reconstruct_ui_loss, reconstruct_uu_loss, epoch_rmse, epoch_mae))
             
             if reconstruct_ui_loss > 0:
                 if reconstruct_ui_loss < best_reconstruct_loss_r:
@@ -288,17 +281,17 @@ class Model():
                     self.args.lam_r = 0
                     log("stop uv reconstruction")
 
-            # if reconstruct_uu_loss > 0:
-            #     if reconstruct_uu_loss < best_reconstruct_loss_t:
-            #         best_reconstruct_loss_t = reconstruct_uu_loss
-            #         rewait_t = 0
-            #     else:
-            #         rewait_t += 1
-            #         log("rewait_t={0}".format(rewait_t))
+            if reconstruct_uu_loss > 0:
+                if reconstruct_uu_loss < best_reconstruct_loss_t:
+                    best_reconstruct_loss_t = reconstruct_uu_loss
+                    rewait_t = 0
+                else:
+                    rewait_t += 1
+                    log("rewait_t={0}".format(rewait_t))
                 
-            #     if rewait_t == self.args.rewait:
-            #         self.args.lam_t = 0
-            #         log("stop uu reconstruction")
+                if rewait_t == self.args.rewait:
+                    self.args.lam_t = 0
+                    log("stop uu reconstruction")
             
             self.curLr = self.adjust_learning_rate(self.opt, e+1)
 
@@ -330,7 +323,7 @@ class Model():
                 log('Early stopping! best epoch = %d'%(best_epoch))
                 break
 
-    def trainModel2(self):
+    def trainModel(self):
         train_loader = self.MyDataLoader
         log("start negative sample...")
         train_loader.neg_sample()
@@ -385,15 +378,15 @@ class Model():
             epoch_rmse_loss += loss.item()
             epoch_mae_loss += t.sum(t.abs(pred.view(-1) - labels)).item()
             epoch_rmse_num += batch_nodes_u.size
-
-            if self.args.lam_r == 0 and self.args.lam_t == 0:
-                loss = loss/labels.shape[0]
+            
+            curBathch = ui_train.shape[0]
+            loss = loss/curBathch
 
             if self.args.lam_r != 0:
-                loss = loss + ((reconstruct_loss*self.args.lam_r)/ui_train.shape[0])
+                loss += ((reconstruct_loss*self.args.lam_r)/curBathch)
             
             if self.args.lam_t != 0:
-                loss = loss + ((trust_reconstruct_loss*self.args.lam_t)/uu_train.shape[0])
+                loss += ((trust_reconstruct_loss*self.args.lam_t)/uu_train.shape[0])
 
             self.opt.zero_grad()
             loss.backward()
@@ -406,83 +399,6 @@ class Model():
         epoch_reconstruct_uu_loss = epoch_reconstruct_uu_loss/stepCount
         return epoch_rmse_loss, epoch_rmse, epoch_mae, epoch_reconstruct_ui_loss, epoch_reconstruct_uu_loss
 
-    def ng_sample(self, train_r, ng_num=1):
-        length = train_r.size
-        neg_data = np.random.randint(low=1, high=self.ratingClass+1, size=length)
-        rebuild_idx = np.where(train_r == neg_data)[0]
-        
-        for idx in rebuild_idx:
-            val = np.random.randint(1, self.ratingClass+1)
-            while val == train_r[idx]:
-                val = np.random.randint(1, self.ratingClass+1)
-            neg_data[idx] = val
-
-        assert np.sum(train_r == neg_data) == 0
-        return neg_data
-
-        ng_r = []
-        # tmp = np.array([1,2,3,4,5])
-        tmp = np.arange(1, self.ratingClass+1)
-        for r in train_r:
-            arr = np.delete(tmp, int(r-1))
-            neg = np.random.choice(arr, ng_num, replace=False)
-            ng_r.append(neg)
-        return np.array(ng_r)
-
-    def trainModel(self, data):
-        train_u, train_v, train_r = data
-        train_r = train_r.astype(np.int)
-        if self.args.lam_r != 0:
-            ng_r = self.ng_sample(train_r)
-        batch = self.args.batch
-        num = len(train_u)
-        assert self.trainMat.nnz == num
-        shuffledIds = np.random.permutation(num)
-        steps = int(np.ceil(num / batch))
-        epoch_rmse_loss = 0
-        epoch_rmse_num = 0
-        epoch_mae_loss = 0
-        epoch_reconstruct_loss = 0
-        for i in range(steps):
-            ed = min((i+1) * batch, num)
-            batch_ids = shuffledIds[i * batch: ed]
-            batch_nodes_u = train_u[batch_ids]
-            batch_nodes_v = train_v[batch_ids]
-            labels_list = t.from_numpy(train_r[batch_ids]).float().to(device_gpu)
-
-            user_embed, item_muliti_embed = self.embed_layer(self.user_dgi_feat, self.user_feat_sp_tensor, self.item_feat_sp_tensor, self.adj_sp_tensor)
-            item_muliti_embed = item_muliti_embed.view(-1, self.ratingClass, self.out_dim)
-            #mean or attention
-            item_embed = t.div(t.sum(item_muliti_embed, dim=1), self.ratingClass)
-
-            if self.args.lam_r != 0:
-                reconstruct_pos = self.w_r(t.cat((user_embed[train_u[batch_ids]], item_muliti_embed[train_v[batch_ids], train_r[batch_ids]-1]), dim=1))
-                reconstruct_neg = self.w_r(t.cat((user_embed[train_u[batch_ids]], item_muliti_embed[train_v[batch_ids], ng_r[batch_ids]-1]), dim=1))
-                reconstruct_loss = (- (reconstruct_pos.view(-1) - reconstruct_neg.view(-1)).sigmoid().log().sum())
-                epoch_reconstruct_loss += reconstruct_loss.item()
-            userEmbed = user_embed[batch_nodes_u]
-            itemEmbed = item_embed[batch_nodes_v]
-
-            pred = self.preModel(userEmbed, itemEmbed)
-
-            loss = self.loss_rmse(pred.view(-1), labels_list)
-
-            epoch_rmse_loss += loss.item()
-            epoch_mae_loss += t.sum(t.abs(pred.view(-1) - labels_list)).item()
-            epoch_rmse_num += batch_nodes_u.size
-            if self.args.lam_r != 0 :
-                loss = (loss + reconstruct_loss*self.args.lam_r)/self.args.batch
-            else:
-                loss = loss/self.args.batch
-
-            self.opt.zero_grad()
-            loss.backward()
-            self.opt.step()
-            log('setp %d/%d, step_loss = %f'%(i,steps, loss.item()), save=False, oneline=True)
-        epoch_rmse = np.sqrt(epoch_rmse_loss / epoch_rmse_num)
-        epoch_mae = epoch_mae_loss / epoch_rmse_num
-        epoch_reconstruct_loss = epoch_reconstruct_loss/steps
-        return epoch_rmse_loss, epoch_rmse, epoch_mae, epoch_reconstruct_loss
 
     def testModel(self, testMat, data):
         test_u, test_v, test_r = data
@@ -559,7 +475,6 @@ if __name__ == '__main__':
     parser.add_argument('--r', type=float, default=0.001)
     parser.add_argument('--r2', type=float, default=0.2)
     parser.add_argument('--r3', type=float, default=0.01)
-    parser.add_argument('--train', type=int, default=2)
     parser.add_argument('--batch', type=int, default=128)
     parser.add_argument('--lr', type=float, default=0.001)
     parser.add_argument('--decay', type=float, default=0.98)
@@ -570,7 +485,7 @@ if __name__ == '__main__':
     parser.add_argument('--rewait', type=int, default=5)
     
     #reconstruction params
-    parser.add_argument('--lam_r', type=float, default=0)
+    parser.add_argument('--lam_r', type=float, default=0.1)
     parser.add_argument('--lam_t', type=float, default=0)
 
     parser.add_argument('--layer', type=str, default="[16,16]")
