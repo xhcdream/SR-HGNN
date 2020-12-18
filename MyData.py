@@ -62,8 +62,7 @@ class MyData():
         train_data = self.trainMat.data
         train_neg_data = np.random.randint(low=1, high=self.ratingClass+1, size=length)
 
-        # rebuild_idx = np.where(train_data == train_neg_data)[0]
-        rebuild_idx = np.where(np.abs(train_data-train_neg_data)<2)[0]
+        rebuild_idx = np.where(train_data == train_neg_data)[0]
         
         for idx in rebuild_idx:
             val = np.random.randint(1, self.ratingClass+1)
